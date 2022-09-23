@@ -1,0 +1,36 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      docker: 18
+
+  # prepare some bash variables to use later on the build process
+  pre_build:
+    commands:
+      # extracts the git branch name
+      - export BRANCH=$(echo "$CODEBUILD_SOURCE_VERSION" | cut -d "/" -f 2)
+      # extracts the git commit
+      - export SHA=$(git rev-parse HEAD | cut -c -7)
+
+  build:
+    commands:
+      # Logs into https://hub.docker.com/ so that CodeBuild can fetch images
+      - echo Logging into Docker Hub...
+      - echo $DOCKER_HUB_TOKEN | docker login --username crazyegg --password-stdin
+
+      # Builds the Docker image, tagging it so we can reference it later
+      - echo Building Docker image...
+      - |
+        docker build -t $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/infra101:$BRANCH-$SHA \
+        --build-arg MIX_ENV=$MIX_ENV \
+        -f .docker/Dockerfile .
+  post_build:
+    commands:
+      # Logs into AWS ECR
+      - echo Logging in to ECR...
+      - $(aws ecr get-login --no-include-email --region $AWS_DEFAULT_REGION)
+
+      # Pushes the Docker image to AWS ECR
+      - echo Pushing docker image...
+      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/infra101:$BRANCH-$SHA
